@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio WebRTC Stream</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<header>
+  <h1>Audio <span>WebRTC</span></h1>
+  <p>Low-latency WHIP publish · WHEP playback</p>
+</header>
+
+<div class="grid">
+
+  <!-- PUBLISH CARD -->
+  <div class="card publish">
+    <div class="card-header">
+      <div class="card-icon">🎙️</div>
+      <div>
+        <div class="card-title">Publish Stream</div>
+        <div class="card-sub">WHIP · audio only</div>
+      </div>
+    </div>
+
+    <label>WebRTC Publish URL</label>
+    <input type="text" id="publishUrl" placeholder="https://…/webrtc/publish/…" />
+
+    <div class="viz-wrap" id="pubVizWrap" style="display:none;">
+      <canvas id="pubCanvas" width="800" height="128"></canvas>
+      <span class="viz-label">MIC INPUT</span>
+    </div>
+
+    <div class="stats-row" id="pubStats" style="display:none;">
+      <div class="stat-chip">State <b id="pubIceState">—</b></div>
+      <div class="stat-chip">Codec <b id="pubCodec">—</b></div>
+      <div class="stat-chip">Bitrate <b id="pubBitrate">—</b></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-green" id="btnPublish">⬆ Start Publishing</button>
+      <button class="btn btn-red" id="btnStopPublish" disabled>Stop</button>
+    </div>
+
+    <div class="status-bar" id="pubStatus">Idle — paste a publish URL to begin</div>
+  </div>
+
+  <!-- PLAYBACK CARD -->
+  <div class="card playback">
+    <div class="card-header">
+      <div class="card-icon">🔊</div>
+      <div>
+        <div class="card-title">Playback</div>
+        <div class="card-sub">WHEP · audio receive</div>
+      </div>
+    </div>
+
+    <label>WebRTC Playback URL</label>
+    <input type="text" id="playbackUrl" placeholder="https://…/webrtc/play/…" />
+
+    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
+
+    <div class="viz-wrap" id="playVizWrap" style="display:none;">
+      <canvas id="playCanvas" width="800" height="128"></canvas>
+      <span class="viz-label">INCOMING</span>
+    </div>
+
+    <div class="stats-row" id="playStats" style="display:none;">
+      <div class="stat-chip">State <b id="playIceState">—</b></div>
+      <div class="stat-chip">Codec <b id="playCodec">—</b></div>
+      <div class="stat-chip">Jitter <b id="playJitter">—</b></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-blue" id="btnPlay">⬇ Start Playback</button>
+      <button class="btn btn-red" id="btnStopPlay" disabled>Stop</button>
+    </div>
+
+    <div class="status-bar" id="playStatus">Idle — paste a playback URL to begin</div>
+  </div>
+
+  <!-- LOG CARD -->
+  <div class="card log-card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(255,255,255,0.05);">📋</div>
+      <div>
+        <div class="card-title">Event Log</div>
+        <div class="card-sub">Real-time WebRTC diagnostics</div>
+      </div>
+    </div>
+    <div class="log-scroll" id="logScroll"></div>
+  </div>
+
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

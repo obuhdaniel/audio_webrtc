@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio WebRTC Stream</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --border: #222230;
+      --accent: #00e5a0;
+      --accent2: #5b8aff;
+      --danger: #ff4d6d;
+      --warn: #ffb347;
+      --text: #e8e8f0;
+      --muted: #6b6b80;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 80px;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -20%, rgba(0,229,160,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(91,138,255,0.05) 0%, transparent 60%);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    header h1 {
+      font-family: var(--sans);
+      font-size: clamp(28px, 5vw, 42px);
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: var(--text);
+    }
+
+    header h1 span { color: var(--accent); }
+
+    header p {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      width: 100%;
+      max-width: 860px;
+    }
+
+    @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      animation: fadeUp 0.5s ease both;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .card.publish::before { background: radial-gradient(ellipse 120% 80% at 50% 0%, rgba(0,229,160,0.06) 0%, transparent 70%); }
+    .card.playback::before { background: radial-gradient(ellipse 120% 80% at 50% 0%, rgba(91,138,255,0.06) 0%, transparent 70%); }
+    .card.publish:hover::before, .card.playback:hover::before { opacity: 1; }
+
+    .card:nth-child(2) { animation-delay: 0.1s; }
+    .card:nth-child(3) { animation-delay: 0.2s; }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .publish .card-icon { background: rgba(0,229,160,0.12); }
+    .playback .card-icon { background: rgba(91,138,255,0.12); }
+
+    .card-title {
+      font-family: var(--sans);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .card-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      margin-top: 14px;
+    }
+    label:first-of-type { margin-top: 0; }
+
+    input[type="text"] {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,229,160,0.1);
+    }
+
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 11px 16px;
+      border-radius: 9px;
+      border: none;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+      margin-top: 14px;
+      letter-spacing: 0.3px;
+    }
+
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
+
+    .btn-green {
+      background: var(--accent);
+      color: #0a0a0f;
+      box-shadow: 0 0 20px rgba(0,229,160,0.25);
+    }
+    .btn-green:hover:not(:disabled) {
+      opacity: 0.9;
+      box-shadow: 0 0 28px rgba(0,229,160,0.35);
+    }
+
+    .btn-blue {
+      background: var(--accent2);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(91,138,255,0.25);
+    }
+    .btn-blue:hover:not(:disabled) {
+      opacity: 0.9;
+      box-shadow: 0 0 28px rgba(91,138,255,0.35);
+    }
+
+    .btn-red {
+      background: var(--danger);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255,77,109,0.25);
+    }
+    .btn-red:hover:not(:disabled) { opacity: 0.9; }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn-ghost:hover:not(:disabled) {
+      border-color: var(--muted);
+      color: var(--text);
+    }
+
+    .status-bar {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: border-color 0.3s, background 0.3s, color 0.3s;
+      word-break: break-all;
+    }
+
+    .status-bar.connected {
+      border-color: rgba(0,229,160,0.4);
+      background: rgba(0,229,160,0.06);
+      color: var(--accent);
+    }
+
+    .status-bar.receiving {
+      border-color: rgba(91,138,255,0.4);
+      background: rgba(91,138,255,0.06);
+      color: var(--accent2);
+    }
+
+    .status-bar.error {
+      border-color: rgba(255,77,109,0.4);
+      background: rgba(255,77,109,0.06);
+      color: var(--danger);
+    }
+
+    .status-bar.warning {
+      border-color: rgba(255,179,71,0.4);
+      background: rgba(255,179,71,0.06);
+      color: var(--warn);
+    }
+
+    /* Visualizer */
+    .viz-wrap {
+      margin-top: 14px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.3);
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 64px;
+    }
+
+    .viz-label {
+      position: absolute;
+      top: 6px;
+      right: 10px;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .stat-chip {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: 5px;
+    }
+
+    .stat-chip b { color: var(--text); font-weight: 600; }
+
+    /* Divider row */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .btn-row .btn { margin-top: 0; }
+
+    /* Log card */
+    .log-card {
+      grid-column: 1 / -1;
+      animation-delay: 0.3s;
+    }
+
+    .log-scroll {
+      max-height: 180px;
+      overflow-y: auto;
+      font-size: 11px;
+      line-height: 1.7;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
+    .log-scroll::-webkit-scrollbar { width: 4px; }
+    .log-scroll::-webkit-scrollbar-track { background: transparent; }
+    .log-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .log-line { display: flex; gap: 10px; }
+    .log-line .ts { color: rgba(255,255,255,0.15); flex-shrink: 0; }
+    .log-line.info .msg { color: var(--muted); }
+    .log-line.ok .msg { color: var(--accent); }
+    .log-line.err .msg { color: var(--danger); }
+    .log-line.warn .msg { color: var(--warn); }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .pulse-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+      animation: pulse 1.4s ease infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Audio <span>WebRTC</span></h1>
+  <p>Low-latency WHIP publish · WHEP playback</p>
+</header>
+
+<div class="grid">
+
+  <!-- PUBLISH CARD -->
+  <div class="card publish">
+    <div class="card-header">
+      <div class="card-icon">🎙️</div>
+      <div>
+        <div class="card-title">Publish Stream</div>
+        <div class="card-sub">WHIP · audio only</div>
+      </div>
+    </div>
+
+    <label>WebRTC Publish URL</label>
+    <input type="text" id="publishUrl" placeholder="https://…/webrtc/publish/…" />
+
+    <div class="viz-wrap" id="pubVizWrap" style="display:none;">
+      <canvas id="pubCanvas" width="800" height="128"></canvas>
+      <span class="viz-label">MIC INPUT</span>
+    </div>
+
+    <div class="stats-row" id="pubStats" style="display:none;">
+      <div class="stat-chip">State <b id="pubIceState">—</b></div>
+      <div class="stat-chip">Codec <b id="pubCodec">—</b></div>
+      <div class="stat-chip">Bitrate <b id="pubBitrate">—</b></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-green" id="btnPublish">⬆ Start Publishing</button>
+      <button class="btn btn-red" id="btnStopPublish" disabled>Stop</button>
+    </div>
+
+    <div class="status-bar" id="pubStatus">Idle — paste a publish URL to begin</div>
+  </div>
+
+  <!-- PLAYBACK CARD -->
+  <div class="card playback">
+    <div class="card-header">
+      <div class="card-icon">🔊</div>
+      <div>
+        <div class="card-title">Playback</div>
+        <div class="card-sub">WHEP · audio receive</div>
+      </div>
+    </div>
+
+    <label>WebRTC Playback URL</label>
+    <input type="text" id="playbackUrl" placeholder="https://…/webrtc/play/…" />
+
+    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
+
+    <div class="viz-wrap" id="playVizWrap" style="display:none;">
+      <canvas id="playCanvas" width="800" height="128"></canvas>
+      <span class="viz-label">INCOMING</span>
+    </div>
+
+    <div class="stats-row" id="playStats" style="display:none;">
+      <div class="stat-chip">State <b id="playIceState">—</b></div>
+      <div class="stat-chip">Codec <b id="playCodec">—</b></div>
+      <div class="stat-chip">Jitter <b id="playJitter">—</b></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-blue" id="btnPlay">⬇ Start Playback</button>
+      <button class="btn btn-red" id="btnStopPlay" disabled>Stop</button>
+    </div>
+
+    <div class="status-bar" id="playStatus">Idle — paste a playback URL to begin</div>
+  </div>
+
+  <!-- LOG CARD -->
+  <div class="card log-card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(255,255,255,0.05);">📋</div>
+      <div>
+        <div class="card-title">Event Log</div>
+        <div class="card-sub">Real-time WebRTC diagnostics</div>
+      </div>
+    </div>
+    <div class="log-scroll" id="logScroll"></div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// Logging
+// ─────────────────────────────────────────────
+function log(msg, type = 'info') {
+  const el = document.getElementById('logScroll');
+  const now = new Date().toISOString().slice(11, 23);
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.innerHTML = `<span class="ts">${now}</span><span class="msg">${msg}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  console.log(`[${type}] ${msg}`);
+}
+
+// ─────────────────────────────────────────────
+// Status helpers
+// ─────────────────────────────────────────────
+function setStatus(id, msg, cls = '') {
+  const el = document.getElementById(id);
+  el.className = 'status-bar ' + cls;
+  el.innerHTML = cls === 'connected' || cls === 'receiving'
+    ? `<span class="pulse-dot"></span>${msg}`
+    : msg;
+}
+
+// ─────────────────────────────────────────────
+// Audio Visualizer
+// ─────────────────────────────────────────────
+function startVisualizer(stream, canvasId, accentColor = '#00e5a0') {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.75;
+  source.connect(analyser);
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  let rafId;
+
+  function draw() {
+    rafId = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(dataArray);
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0, 0, W, H);
+
+    const barW = (W / bufferLength) * 2.2;
+    let x = 0;
+    for (let i = 0; i < bufferLength; i++) {
+      const barH = (dataArray[i] / 255) * H;
+      const alpha = 0.4 + (dataArray[i] / 255) * 0.6;
+      ctx.fillStyle = accentColor + Math.round(alpha * 255).toString(16).padStart(2,'0');
+      ctx.beginPath();
+      ctx.roundRect(x, H - barH, barW - 1, barH, 2);
+      ctx.fill();
+      x += barW;
+    }
+  }
+  draw();
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    audioCtx.close();
+  };
+}
+
+// ─────────────────────────────────────────────
+// ICE config — optimized for low latency
+// ─────────────────────────────────────────────
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.l.google.com:19302' }
+  ],
+  iceTransportPolicy: 'all',
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require'
+};
+
+// ─────────────────────────────────────────────
+// PUBLISH
+// ─────────────────────────────────────────────
+let pubPc = null, pubStream = null, stopPubViz = null, pubStatsTimer = null;
+
+document.getElementById('btnPublish').onclick = async () => {
+  const url = document.getElementById('publishUrl').value.trim();
+  if (!url) { setStatus('pubStatus', '⚠ Paste a publish URL first', 'warning'); return; }
+
+  document.getElementById('btnPublish').disabled = true;
+  setStatus('pubStatus', 'Requesting microphone access…');
+  log('Requesting microphone…');
+
+  try {
+    pubStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: { ideal: 48000 },
+        channelCount: { ideal: 1 }
+      },
+      video: false
+    });
+
+    log('Microphone acquired', 'ok');
+    document.getElementById('pubVizWrap').style.display = '';
+    document.getElementById('pubStats').style.display = '';
+    stopPubViz = startVisualizer(pubStream, 'pubCanvas', '#00e5a0');
+
+    pubPc = new RTCPeerConnection(ICE_CONFIG);
+
+    pubPc.oniceconnectionstatechange = () => {
+      const s = pubPc.iceConnectionState;
+      document.getElementById('pubIceState').textContent = s;
+      log(`Publish ICE → ${s}`, s === 'connected' ? 'ok' : s === 'failed' ? 'err' : 'info');
+      if (s === 'connected') {
+        setStatus('pubStatus', '🟢 Stream is LIVE', 'connected');
+        startPubStats();
+      } else if (s === 'failed' || s === 'disconnected') {
+        setStatus('pubStatus', `❌ ICE ${s}`, 'error');
+      }
+    };
+
+    pubPc.onicegatheringstatechange = () => {
+      log(`Publish ICE gathering → ${pubPc.iceGatheringState}`);
+    };
+
+    // Add audio track — force Opus codec for low latency
+    pubStream.getAudioTracks().forEach(t => pubPc.addTrack(t, pubStream));
+
+    const offer = await pubPc.createOffer({
+      offerToReceiveAudio: false,
+      offerToReceiveVideo: false
+    });
+
+    // Prefer Opus with low-latency settings in SDP
+    offer.sdp = preferOpus(offer.sdp);
+    await pubPc.setLocalDescription(offer);
+
+    setStatus('pubStatus', 'Gathering ICE candidates…');
+    log('Waiting for ICE gathering…');
+
+    // Trickle-ice wait — up to 2s or complete
+    await waitForIce(pubPc, 2000);
+
+    log(`Sending offer to: ${url}`);
+    setStatus('pubStatus', 'Sending offer to server…');
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/sdp',
+        'Accept': 'application/sdp'
+      },
+      body: pubPc.localDescription.sdp
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Server ${res.status}: ${txt.slice(0, 200)}`);
+    }
+
+    const answerSdp = await res.text();
+    log(`Answer received (${answerSdp.length} bytes)`);
+
+    await pubPc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+    setStatus('pubStatus', 'Connecting…');
+    document.getElementById('btnStopPublish').disabled = false;
+
+    // Detect codec from SDP
+    const codec = detectAudioCodec(answerSdp);
+    document.getElementById('pubCodec').textContent = codec;
+    log(`Negotiated codec: ${codec}`, 'ok');
+
+  } catch (err) {
+    log('Publish error: ' + err.message, 'err');
+    setStatus('pubStatus', '❌ ' + err.message, 'error');
+    teardownPublish();
+    document.getElementById('btnPublish').disabled = false;
+  }
+};
+
+document.getElementById('btnStopPublish').onclick = () => {
+  log('Stopping publish stream…', 'warn');
+  teardownPublish();
+  setStatus('pubStatus', 'Stopped');
+  document.getElementById('btnPublish').disabled = false;
+  document.getElementById('btnStopPublish').disabled = true;
+};
+
+function teardownPublish() {
+  if (pubPc) { pubPc.close(); pubPc = null; }
+  if (pubStream) { pubStream.getTracks().forEach(t => t.stop()); pubStream = null; }
+  if (stopPubViz) { stopPubViz(); stopPubViz = null; }
+  if (pubStatsTimer) { clearInterval(pubStatsTimer); pubStatsTimer = null; }
+  document.getElementById('pubVizWrap').style.display = 'none';
+  document.getElementById('pubStats').style.display = 'none';
+  document.getElementById('pubBitrate').textContent = '—';
+  document.getElementById('pubIceState').textContent = '—';
+}
+
+async function startPubStats() {
+  let lastBytes = 0, lastTs = 0;
+  pubStatsTimer = setInterval(async () => {
+    if (!pubPc) return;
+    const stats = await pubPc.getStats();
+    stats.forEach(r => {
+      if (r.type === 'outbound-rtp' && r.kind === 'audio') {
+        const now = r.timestamp;
+        const bytes = r.bytesSent;
+        if (lastTs) {
+          const dt = (now - lastTs) / 1000;
+          const kbps = Math.round(((bytes - lastBytes) * 8) / dt / 1000);
+          document.getElementById('pubBitrate').textContent = kbps + ' kbps';
+        }
+        lastBytes = bytes; lastTs = now;
+      }
+    });
+  }, 1500);
+}
+
+// ─────────────────────────────────────────────
+// PLAYBACK
+// ─────────────────────────────────────────────
+let playPc = null, stopPlayViz = null, playStatsTimer = null;
+
+document.getElementById('btnPlay').onclick = async () => {
+  const url = document.getElementById('playbackUrl').value.trim();
+  if (!url) { setStatus('playStatus', '⚠ Paste a playback URL first', 'warning'); return; }
+
+  document.getElementById('btnPlay').disabled = true;
+  setStatus('playStatus', 'Creating peer connection…');
+  log('Starting playback…');
+
+  try {
+    playPc = new RTCPeerConnection(ICE_CONFIG);
+
+    playPc.oniceconnectionstatechange = () => {
+      const s = playPc.iceConnectionState;
+      document.getElementById('playIceState').textContent = s;
+      log(`Playback ICE → ${s}`, s === 'connected' ? 'ok' : s === 'failed' ? 'err' : 'info');
+      if (s === 'failed' || s === 'disconnected') {
+        setStatus('playStatus', `❌ ICE ${s}`, 'error');
+      }
+    };
+
+    // WHEP: add recvonly transceiver
+    playPc.addTransceiver('audio', { direction: 'recvonly' });
+
+    playPc.ontrack = (e) => {
+      log('Remote track received: ' + e.track.kind, 'ok');
+      const audio = document.getElementById('remoteAudio');
+      audio.srcObject = e.streams[0];
+
+      // Visualize incoming audio
+      document.getElementById('playVizWrap').style.display = '';
+      document.getElementById('playStats').style.display = '';
+
+      // We need AudioContext on a stream — use the MediaStream from the track
+      stopPlayViz = startVisualizer(e.streams[0], 'playCanvas', '#5b8aff');
+
+      setStatus('playStatus', '🔵 Receiving audio', 'receiving');
+      startPlayStats();
+    };
+
+    const offer = await playPc.createOffer();
+    await playPc.setLocalDescription(offer);
+
+    setStatus('playStatus', 'Gathering ICE…');
+    await waitForIce(playPc, 2000);
+
+    log(`Sending WHEP offer to: ${url}`);
+    setStatus('playStatus', 'Sending request…');
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/sdp',
+        'Accept': 'application/sdp'
+      },
+      body: playPc.localDescription.sdp
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Server ${res.status}: ${txt.slice(0, 200)}`);
+    }
+
+    const answerSdp = await res.text();
+    log(`Playback answer received (${answerSdp.length} bytes)`);
+
+    await playPc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+    const codec = detectAudioCodec(answerSdp);
+    document.getElementById('playCodec').textContent = codec;
+    log(`Playback codec: ${codec}`, 'ok');
+
+    setStatus('playStatus', 'Negotiating…');
+    document.getElementById('btnStopPlay').disabled = false;
+
+  } catch (err) {
+    log('Playback error: ' + err.message, 'err');
+    setStatus('playStatus', '❌ ' + err.message, 'error');
+    teardownPlayback();
+    document.getElementById('btnPlay').disabled = false;
+  }
+};
+
+document.getElementById('btnStopPlay').onclick = () => {
+  log('Stopping playback…', 'warn');
+  teardownPlayback();
+  setStatus('playStatus', 'Stopped');
+  document.getElementById('btnPlay').disabled = false;
+  document.getElementById('btnStopPlay').disabled = true;
+};
+
+function teardownPlayback() {
+  if (playPc) { playPc.close(); playPc = null; }
+  if (stopPlayViz) { stopPlayViz(); stopPlayViz = null; }
+  if (playStatsTimer) { clearInterval(playStatsTimer); playStatsTimer = null; }
+  document.getElementById('remoteAudio').srcObject = null;
+  document.getElementById('playVizWrap').style.display = 'none';
+  document.getElementById('playStats').style.display = 'none';
+  document.getElementById('playIceState').textContent = '—';
+  document.getElementById('playCodec').textContent = '—';
+  document.getElementById('playJitter').textContent = '—';
+}
+
+async function startPlayStats() {
+  playStatsTimer = setInterval(async () => {
+    if (!playPc) return;
+    const stats = await playPc.getStats();
+    stats.forEach(r => {
+      if (r.type === 'inbound-rtp' && r.kind === 'audio') {
+        const jitter = r.jitter != null ? (r.jitter * 1000).toFixed(1) + ' ms' : '—';
+        document.getElementById('playJitter').textContent = jitter;
+      }
+    });
+  }, 1500);
+}
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+// Wait for ICE gathering to complete or timeout
+function waitForIce(pc, maxMs = 2000) {
+  return new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') { resolve(); return; }
+    const timeout = setTimeout(resolve, maxMs);
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') {
+        clearTimeout(timeout);
+        resolve();
+      }
+    };
+    pc.onicecandidate = e => {
+      if (!e.candidate) { clearTimeout(timeout); resolve(); }
+    };
+  });
+}
+
+// Prefer Opus codec in SDP — sets maxaveragebitrate and enables cbr for lower latency
+function preferOpus(sdp) {
+  // Find Opus payload type
+  const match = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
+  if (!match) return sdp;
+  const pt = match[1];
+
+  // Inject or replace fmtp for Opus
+  const opusFmtp = `a=fmtp:${pt} minptime=10;useinbandfec=1;stereo=0;maxaveragebitrate=96000`;
+
+  if (sdp.includes(`a=fmtp:${pt} `)) {
+    return sdp.replace(new RegExp(`a=fmtp:${pt} [^\r\n]+`), opusFmtp);
+  } else {
+    return sdp.replace(
+      new RegExp(`(a=rtpmap:${pt} opus[^\r\n]+\r?\n)`),
+      `$1${opusFmtp}\r\n`
+    );
+  }
+}
+
+// Pull codec name from SDP
+function detectAudioCodec(sdp) {
+  const m = sdp.match(/a=rtpmap:\d+ ([A-Za-z0-9]+)\/\d+/);
+  return m ? m[1].toUpperCase() : 'unknown';
+}
+
+log('Audio WebRTC tool ready', 'ok');
+</script>
+</body>
+</html>
