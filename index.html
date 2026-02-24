@@ -386,6 +386,23 @@
     <label>WebRTC Publish URL</label>
     <input type="text" id="publishUrl" placeholder="https://…/webrtc/publish/…" />
 
+    <!-- Audio Source Selection -->
+    <label>Audio Source</label>
+    <div style="display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
+      <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; text-transform: none; font-size: 12px;">
+        <input type="checkbox" id="useMic" checked style="width: 14px; height: 14px; accent-color: var(--accent);" />
+        🎤 Microphone
+      </label>
+      <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; text-transform: none; font-size: 12px;">
+        <input type="checkbox" id="useSystemAudio" style="width: 14px; height: 14px; accent-color: var(--accent2);" />
+        🔊 System Audio
+      </label>
+      <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; text-transform: none; font-size: 12px;" title="Mix microphone and system audio together">
+        <input type="checkbox" id="mixAudio" style="width: 14px; height: 14px; accent-color: var(--warn);" />
+        🎛️ Mix
+      </label>
+    </div>
+
     <div class="viz-wrap" id="pubVizWrap" style="display:none;">
       <canvas id="pubCanvas" width="800" height="128"></canvas>
       <span class="viz-label">MIC INPUT</span>
@@ -540,28 +557,69 @@ const ICE_CONFIG = {
 // PUBLISH
 // ─────────────────────────────────────────────
 let pubPc = null, pubStream = null, stopPubViz = null, pubStatsTimer = null;
+let micStream = null, systemStream = null;
 
 document.getElementById('btnPublish').onclick = async () => {
   const url = document.getElementById('publishUrl').value.trim();
   if (!url) { setStatus('pubStatus', '⚠ Paste a publish URL first', 'warning'); return; }
 
+  // Get audio source options
+  const useMic = document.getElementById('useMic').checked;
+  const useSystemAudio = document.getElementById('useSystemAudio').checked;
+  const mixAudio = document.getElementById('mixAudio').checked;
+
+  if (!useMic && !useSystemAudio) {
+    setStatus('pubStatus', '⚠ Select at least one audio source', 'warning');
+    return;
+  }
+
+  if (mixAudio && (!useMic || !useSystemAudio)) {
+    setStatus('pubStatus', '⚠ Mix requires both Microphone and System Audio', 'warning');
+    return;
+  }
+
   document.getElementById('btnPublish').disabled = true;
-  setStatus('pubStatus', 'Requesting microphone access…');
-  log('Requesting microphone…');
+  
+  // Reset global stream variables
+  micStream = null;
+  systemStream = null;
 
   try {
-    pubStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: { ideal: 48000 },
-        channelCount: { ideal: 1 }
-      },
-      video: false
-    });
+    // Capture audio based on selection
+    if (useMic && !useSystemAudio) {
+      // Microphone only
+      setStatus('pubStatus', 'Requesting microphone access…');
+      log('Requesting microphone…');
+      pubStream = await captureMicrophone();
+      log('Microphone acquired', 'ok');
+    } else if (useSystemAudio && !useMic) {
+      // System audio only
+      setStatus('pubStatus', 'Requesting system audio…');
+      log('Requesting system audio…');
+      pubStream = await captureSystemAudio();
+    } else if (useMic && useSystemAudio && mixAudio) {
+      // Mixed audio
+      setStatus('pubStatus', 'Requesting microphone and system audio…');
+      log('Requesting microphone and system audio…');
+      
+      // Capture both streams
+      const [mic, system] = await Promise.all([
+        captureMicrophone(),
+        captureSystemAudio()
+      ]);
+      micStream = mic;
+      systemStream = system;
+      
+      // Mix them together
+      pubStream = mixAudioStreams([micStream, systemStream]);
+      log('Audio streams mixed', 'ok');
+    } else if (useMic && useSystemAudio && !mixAudio) {
+      // Both but not mixed - use system audio (can't add two tracks to same stream easily without WebRTC transceivers)
+      setStatus('pubStatus', 'Requesting system audio (both selected, using system)…');
+      log('Requesting system audio…');
+      pubStream = await captureSystemAudio();
+    }
 
-    log('Microphone acquired', 'ok');
     document.getElementById('pubVizWrap').style.display = '';
     document.getElementById('pubStats').style.display = '';
     stopPubViz = startVisualizer(pubStream, 'pubCanvas', '#00e5a0');
@@ -651,6 +709,9 @@ document.getElementById('btnStopPublish').onclick = () => {
 function teardownPublish() {
   if (pubPc) { pubPc.close(); pubPc = null; }
   if (pubStream) { pubStream.getTracks().forEach(t => t.stop()); pubStream = null; }
+  // Clean up individual streams if they exist (for mixed audio)
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (systemStream) { systemStream.getTracks().forEach(t => t.stop()); systemStream = null; }
   if (stopPubViz) { stopPubViz(); stopPubViz = null; }
   if (pubStatsTimer) { clearInterval(pubStatsTimer); pubStatsTimer = null; }
   document.getElementById('pubVizWrap').style.display = 'none';
@@ -802,6 +863,66 @@ async function startPlayStats() {
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
+
+// Capture system audio using getDisplayMedia
+async function captureSystemAudio() {
+  log('Requesting system audio capture…');
+  const displayStream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,       // required — browser won't let you skip this
+    audio: {
+      echoCancellation: false,  // don't process system audio
+      noiseSuppression: false,
+      autoGainControl: false,
+      sampleRate: { ideal: 48000 }
+    }
+  });
+
+  // Pull only the audio track — drop the video track immediately
+  const audioTracks = displayStream.getAudioTracks();
+  if (audioTracks.length === 0) {
+    throw new Error('No audio captured — user may have unchecked "Share audio" in the picker');
+  }
+
+  // Stop the video track we were forced to grab
+  displayStream.getVideoTracks().forEach(t => t.stop());
+
+  // Listen for when user stops sharing via browser UI
+  audioTracks[0].onended = () => {
+    log('System audio sharing stopped by user', 'warn');
+  };
+
+  // Build an audio-only stream
+  const audioOnlyStream = new MediaStream(audioTracks);
+  log('System audio captured', 'ok');
+  return audioOnlyStream;
+}
+
+// Capture microphone audio
+async function captureMicrophone() {
+  return await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      sampleRate: { ideal: 48000 },
+      channelCount: { ideal: 1 }
+    },
+    video: false
+  });
+}
+
+// Mix multiple audio streams into one using Web Audio API
+function mixAudioStreams(streams) {
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const destination = audioCtx.createMediaStreamDestination();
+  
+  streams.forEach(stream => {
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(destination);
+  });
+  
+  return destination.stream;
+}
 
 // Wait for ICE gathering to complete or timeout
 function waitForIce(pc, maxMs = 2000) {
